@@ -1,5 +1,5 @@
 /* Caderno Digital — service worker: guarda a app para funcionar sem internet */
-const CACHE = 'caderno-digital-v2';
+const CACHE = 'caderno-digital-v3';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
