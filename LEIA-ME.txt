@@ -1,0 +1,28 @@
+CADERNO DIGITAL — fases 1 e 2
+Powered by Claude IA & Ideias&Soltas — concepção de produtos multimédia
+
+COMO INSTALAR / ATUALIZAR NO iPad
+1. No repositório GitHub (professorfmtc-lab/Geografia), pasta "caderno":
+   carrega (ou substitui) TODOS os ficheiros desta pasta.
+2. Abre no Safari do iPad: https://professorfmtc-lab.github.io/Geografia/caderno/
+3. Primeira vez: Partilhar → "Adicionar ao ecrã principal".
+   Se já estava instalada: abre a app com internet e ela atualiza-se sozinha.
+   Os cadernos que já tinhas mantêm-se.
+
+PÁGINAS DE BLOCOS (fase 2) — atalhos
+  /          abre o menu de blocos (texto, títulos, listas, tarefas, tabela,
+             imagem, desenho à mão, subpáginas, ligações)
+  # espaço   Título 1   (## Título 2, ### Título 3)
+  - espaço   lista com marcas      1. espaço  lista numerada
+  [] espaço  tarefa                > espaço   citação
+  ---        linha divisória
+  Enter      bloco novo            Enter numa linha vazia de lista: sai da lista
+  Apagar no início de um bloco: volta a texto normal / junta com o de cima
+  Selecionar texto: barra com negrito, itálico, sublinhado, marcador e cores
+  + e ⋮⋮ à esquerda de cada bloco: inserir abaixo / mover, duplicar, apagar
+  Botão "Páginas": árvore de páginas e subpáginas
+
+IMPORTANTE
+- Os cadernos ficam guardados no próprio iPad, não no GitHub.
+- Faz de vez em quando "Cópia de segurança" e guarda o ficheiro no Drive
+  ou em Ficheiros. O iOS pode apagar dados de apps web pouco usadas.
