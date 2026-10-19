@@ -1,13 +1,27 @@
-CADERNO DIGITAL — fases 1 e 2
+CADERNO DIGITAL — fases 1, 2 e 3
 Powered by Claude IA & Ideias&Soltas — concepção de produtos multimédia
 
 COMO INSTALAR / ATUALIZAR NO iPad
-1. No repositório GitHub (professorfmtc-lab/Geografia), pasta "caderno":
-   carrega (ou substitui) TODOS os ficheiros desta pasta.
-2. Abre no Safari do iPad: https://professorfmtc-lab.github.io/Geografia/caderno/
-3. Primeira vez: Partilhar → "Adicionar ao ecrã principal".
-   Se já estava instalada: abre a app com internet e ela atualiza-se sozinha.
+1. No repositório GitHub da app (caderno-digital), substitui TODOS os ficheiros
+   desta pasta (pelo GitHub Desktop: copiar para a pasta, Commit, Push).
+2. Abre a app no Safari do iPad, no endereço de sempre, com internet.
+   Primeira vez: Partilhar → "Adicionar ao ecrã principal".
+   Se já estava instalada: abre a app com internet e ela atualiza-se sozinha
+   (se não mudar logo, fecha-a e volta a abrir).
    Os cadernos que já tinhas mantêm-se.
+
+PDFs (fase 3)
+- Biblioteca → "📄 Abrir PDF": cria um caderno novo com as páginas do PDF.
+- Dentro de um caderno → "Mais ⋯" → "Inserir um PDF a seguir a esta página".
+- Escreve por cima com o lápis, o marcador e a borracha, como numa página normal.
+  O PDF fica por baixo e nunca é alterado: a borracha só apaga a tua escrita.
+- "Mais ⋯" → "Exportar o caderno (PDF)": sai o PDF com a tua escrita;
+  no painel de impressão usa "Partilhar" → "Guardar em Ficheiros" → Google Drive.
+- Até 60 páginas por PDF. Páginas na horizontal aparecem inteiras, ao centro
+  da folha (usa o zoom para escrever nelas).
+- Na primeira vez que abres um PDF é preciso internet (para descarregar o
+  leitor de PDF); depois funciona sem rede.
+- As cópias de segurança levam também os PDFs, por isso ficam maiores.
 
 PÁGINAS DE BLOCOS (fase 2) — atalhos
   /          abre o menu de blocos (texto, títulos, listas, tarefas, tabela,

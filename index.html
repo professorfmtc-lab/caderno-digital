@@ -183,6 +183,7 @@ figure.fig img{max-width:100%;border-radius:8px;display:block}
     <button class="btn" id="btnRestore">Restaurar cópia</button>
     <button class="btn" id="btnBackup">Cópia de segurança</button>
     <button class="btn" id="btnDrive">☁ Drive</button>
+    <button class="btn" id="btnPdf">📄 Abrir PDF</button>
     <button class="btn primary" id="btnNew">+ Novo caderno</button>
   </div>
   <div class="hint hidden" id="installHint">Para usar como app no iPad: toca em <b>Partilhar</b> → <b>Adicionar ao ecrã principal</b>. Assim abre em ecrã inteiro e funciona sem internet.</div>
@@ -255,6 +256,7 @@ figure.fig img{max-width:100%;border-radius:8px;display:block}
   <button data-f="removeFormat" title="Limpar formatação">⌀</button>
 </div>
 <input type="file" id="fileImg" accept="image/*" hidden>
+<input type="file" id="filePdf" accept="application/pdf,.pdf" hidden>
 <div id="print"></div>
 <div class="toast" id="toast"></div>
 
@@ -262,6 +264,7 @@ figure.fig img{max-width:100%;border-radius:8px;display:block}
 'use strict';
 /* =========================================================
    Caderno Digital — fase 1 (caderno manuscrito) + fase 2 (páginas de blocos)
+                     + fase 3 (abrir e anotar PDFs)
    Powered by Claude IA & Ideias&Soltas — concepção de produtos multimédia
    ========================================================= */
 
@@ -459,7 +462,7 @@ function renderPageTo(c, p) {
   const x = c.getContext('2d');
   x.setTransform(c.width / PAGE_W, 0, 0, c.height / PAGE_H, 0, 0);
   if (p.kind === 'doc') return renderDocThumb(x, p);
-  drawBackground(x, p.bg);
+  drawPageBg(x, p);
   p.strokes.forEach(s => drawStroke(x, s));
 }
 function renderDocThumb(x, p) {
@@ -482,6 +485,138 @@ function renderDocThumb(x, p) {
   }
 }
 function plainText(html) { const d = document.createElement('div'); d.innerHTML = html; return d.textContent; }
+
+/* ---------- Fase 3: PDFs como fundo das páginas manuscritas ----------
+   Cada página do PDF é convertida numa imagem (JPEG) guardada no iPad, como
+   registo «asset» no mesmo armazém das páginas. A escrita fica por cima, à parte:
+   o PDF original nunca é alterado. As cópias de segurança levam os fundos. */
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const PDF_MAX = 60;                       // páginas por importação (memória do iPad)
+const PDF_RES = 1500;                     // largura máxima da imagem de cada página, em píxeis
+const IMG_KEEP = 8;                       // imagens de fundo mantidas em memória ao mesmo tempo
+const IMG = new Map();                    // id do fundo -> { img, bad, wait }
+function pdfRect(d) {                     // a página do PDF cabe inteira na folha, centrada
+  const k = Math.min(PAGE_W / d.w, PAGE_H / d.h), w = d.w * k, h = d.h * k;
+  return { x: (PAGE_W - w) / 2, y: (PAGE_H - h) / 2, w, h };
+}
+function assetLoad(id) {
+  let e = IMG.get(id);
+  if (e) { IMG.delete(id); IMG.set(id, e); return e.wait; }        // passa a ser o mais recente
+  e = { img: null, bad: false };
+  IMG.set(id, e);
+  e.wait = DB.get('pages', id).then(a => new Promise(res => {
+    if (!a || !a.data) { e.bad = true; return res(); }
+    const im = new Image();
+    im.onload = () => { e.img = im; res(); };
+    im.onerror = () => { e.bad = true; res(); };
+    im.src = a.data;
+  })).catch(() => { e.bad = true; });
+  if (IMG.size > IMG_KEEP) {                                        // liberta os mais antigos
+    const cur = page() && page().pdf ? page().pdf.asset : null;
+    for (const k of IMG.keys()) { if (IMG.size <= IMG_KEEP) break; if (k !== id && k !== cur) IMG.delete(k); }
+  }
+  return e.wait;
+}
+function drawPageBg(ctx, p) {
+  if (p.bg !== 'pdf' || !p.pdf) return drawBackground(ctx, p.bg);
+  ctx.save();
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, PAGE_W, PAGE_H);
+  const r = pdfRect(p.pdf), id = p.pdf.asset, e = IMG.get(id);
+  if (e && e.img) ctx.drawImage(e.img, r.x, r.y, r.w, r.h);
+  else {
+    ctx.fillStyle = '#f4f6fa'; ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = '#98a2b3'; ctx.font = '30px -apple-system, "Segoe UI", sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(e && e.bad ? 'Fundo do PDF em falta' : 'A carregar o PDF…', PAGE_W / 2, PAGE_H / 2);
+    if (!e || !e.bad) (e ? e.wait : assetLoad(id)).then(() => {
+      const pg = page(), f = IMG.get(id);
+      if (f && f.img && S.nb && pg && pg.pdf && pg.pdf.asset === id && !isDoc()) redrawBase(S.act && S.act.mode === 'drag' && S.sel ? S.sel.ids : undefined);
+    });
+  }
+  ctx.restore();
+}
+let pdfjsP = null;
+function loadPdfJs() {                    // o leitor de PDF só é carregado quando é preciso
+  if (pdfjsP) return pdfjsP;
+  pdfjsP = (async () => {
+    if (!window.pdfjsLib) await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = PDFJS + 'pdf.min.js'; s.crossOrigin = 'anonymous';
+      s.onload = res; s.onerror = () => rej(new Error('não foi possível carregar o leitor de PDF (na primeira vez é preciso internet)'));
+      document.head.appendChild(s);
+    });
+    let code;
+    try { const r = await fetch(PDFJS + 'pdf.worker.min.js', { mode: 'cors' }); if (!r.ok) throw 0; code = await r.text(); }
+    catch (_) { throw new Error('não foi possível carregar o leitor de PDF (na primeira vez é preciso internet)'); }
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+    return window.pdfjsLib;
+  })();
+  pdfjsP.catch(() => { pdfjsP = null; });
+  return pdfjsP;
+}
+async function pdfToPages(file, nbId, made) {   // devolve as páginas novas (ainda não gravadas)
+  toast('A abrir o PDF…', 60000);
+  const lib = await loadPdfJs();
+  let doc;
+  try { doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise; }
+  catch (e) { throw new Error(e && e.name === 'PasswordException' ? 'o PDF está protegido por palavra-passe' : 'o ficheiro não parece ser um PDF válido'); }
+  let n = doc.numPages;
+  if (n > PDF_MAX) {
+    if (!await confirmBox('PDF grande', `Este PDF tem ${n} páginas. Para não sobrecarregar o iPad, são importadas só as primeiras ${PDF_MAX}.`, 'Continuar', false)) { doc.destroy(); return null; }
+    n = PDF_MAX;
+  }
+  const out = [], c = document.createElement('canvas'), nome = file.name.replace(/\.pdf$/i, '');
+  try {
+    for (let i = 1; i <= n; i++) {
+      toast(`A importar a página ${i} de ${n}…`, 60000);
+      const pg = await doc.getPage(i);
+      const v1 = pg.getViewport({ scale: 1 });
+      const k = Math.min(PDF_RES / v1.width, (PDF_RES * PAGE_H / PAGE_W) / v1.height);
+      const vp = pg.getViewport({ scale: k });
+      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+      await pg.render({ canvasContext: x, viewport: vp }).promise;
+      pg.cleanup();
+      const a = { id: 'a' + uid(), kind: 'asset', nb: nbId, data: c.toDataURL('image/jpeg', 0.82), w: c.width, h: c.height };
+      await DB.put('pages', a); made.push(a.id);
+      const p = newPage(nbId, 'pdf');
+      p.pdf = { asset: a.id, w: a.w, h: a.h, src: nome, n: i };
+      out.push(p);
+      await new Promise(r => setTimeout(r));
+    }
+  } finally { c.width = c.height = 0; doc.destroy(); }
+  return out;
+}
+async function importPdf(file, here) {    // here: inserir no caderno aberto; senão, caderno novo
+  const made = [];
+  try {
+    if (here) {
+      await flush();
+      const pages = await pdfToPages(file, S.nb.id, made); if (!pages) return;
+      const cur = page(), at = subtreeEnd(S.idx);
+      pages.forEach(p => { p.parent = cur ? cur.parent || null : null; });
+      S.pages.splice(at, 0, ...pages);
+      pages.forEach(p => markDirty(p.id));
+      await flush(); goPage(at);
+      toast(`${pages.length} página(s) do PDF inseridas. Já podes escrever por cima.`, 4000);
+    } else {
+      const nb = { id: uid(), title: file.name.replace(/\.pdf$/i, '').slice(0, 60) || 'PDF', color: COVERS[Math.floor(Math.random() * COVERS.length)],
+                   bg: 'liso', created: Date.now(), updated: Date.now(), pages: [], lastPage: 0 };
+      const pages = await pdfToPages(file, nb.id, made); if (!pages) return;
+      for (const p of pages) await DB.put('pages', p);
+      nb.pages = pages.map(p => p.id);
+      await DB.put('notebooks', nb);
+      noteChange(); requestPersist();
+      toast(`PDF aberto (${pages.length} página(s)). Já podes escrever por cima.`, 4000);
+      openNotebook(nb.id);
+    }
+  } catch (e) {
+    for (const id of made) { try { await DB.del('pages', id); } catch (_) {} }
+    toast('Não foi possível abrir o PDF: ' + (e && e.message || e), 6000);
+  }
+}
+async function delAssets(pages) {         // apaga os fundos de PDF das páginas indicadas
+  for (const p of pages) if (p && p.pdf && p.pdf.asset) { IMG.delete(p.pdf.asset); try { await DB.del('pages', p.pdf.asset); } catch (_) {} }
+}
 
 /* ---------- Geometria ---------- */
 const bbCache = new WeakMap();
@@ -529,7 +664,7 @@ function clearCtx(c) { const x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 
 function redrawBase(except) {
   const pg = page(); if (!pg || pg.kind === 'doc') return;
   const x = clearCtx(cBase);
-  drawBackground(x, pg.bg);
+  drawPageBg(x, pg);
   for (const s of pg.strokes) if (!except || !except.has(s.id)) drawStroke(x, s);
 }
 function layout() {
@@ -840,11 +975,12 @@ function goPage(i) {
   if (i < 0 || i >= S.pages.length) return;
   if (document.activeElement && document.activeElement.isContentEditable) document.activeElement.blur();
   S.idx = i; showView(); updatePage(); markDirty(null);
+  const nx = S.pages[i + 1]; if (nx && nx.pdf) assetLoad(nx.pdf.asset);
 }
 function addPage(kind) {                  // nova página do mesmo tipo da atual, logo a seguir (mesmo nível)
   const cur = page();
   if (kind !== 'doc' && kind !== 'ink') kind = cur ? cur.kind : 'ink';
-  const p = kind === 'doc' ? newDoc(S.nb.id) : newPage(S.nb.id, cur && cur.kind === 'ink' ? cur.bg : (S.nb.bg || 'pautado'));
+  const p = kind === 'doc' ? newDoc(S.nb.id) : newPage(S.nb.id, cur && cur.kind === 'ink' && cur.bg !== 'pdf' ? cur.bg : (S.nb.bg || 'pautado'));
   p.parent = cur ? cur.parent || null : null;
   const at = S.pages.length ? subtreeEnd(S.idx) : 0;
   S.pages.splice(at, 0, p);
@@ -855,6 +991,7 @@ async function deletePage() {
   if (S.pages.length === 1) {
     if (!await confirmBox('Limpar página', 'É a única página do caderno. Queres apagar todo o conteúdo dela?', 'Limpar')) return;
     if (cur.kind === 'doc') { pushHist(snap(cur)); cur.blocks = [{ id: uid(), type: 'p', html: '' }]; afterDocEdit(); }
+    else if (cur.bg === 'pdf') { pushHist(cur.strokes); cur.strokes = []; afterEdit(); toast('A escrita foi apagada; o PDF fica.'); }
     else { pushHist(cur.strokes); cur.strokes = []; afterEdit(); }
     return;
   }
@@ -862,6 +999,7 @@ async function deletePage() {
   if (!await confirmBox('Apagar página', `Apagar «${pageName(cur)}»${extra}? Esta ação não pode ser anulada.`)) return;
   const removed = S.pages.splice(S.idx, n);
   for (const p of removed) { S.hist.delete(p.id); S.dirtyPages.delete(p.id); try { await DB.del('pages', p.id); } catch (_) {} }
+  await delAssets(removed);
   if (!S.pages.length) { const p = cur.kind === 'doc' ? newDoc(S.nb.id) : newPage(S.nb.id, S.nb.bg); S.pages.push(p); markDirty(p.id); }
   S.idx = Math.min(S.idx, S.pages.length - 1);
   showView(); updatePage(); markDirty(null); await flush();
@@ -897,6 +1035,7 @@ function updatePenBtn() { $('#btnPenOnly').classList.toggle('on', S.penOnly); }
 
 async function chooseBg() {
   const cur = page().bg;
+  if (cur === 'pdf') { toast('Esta página tem um PDF como fundo: o papel não se muda.'); return; }
   const r = await modal(`<h2>Papel</h2><div class="opts">${BGS.map(([k, l]) =>
       `<button class="opt${k === cur ? ' on' : ''}" data-bg="${k}"><canvas width="168" height="238"></canvas>${l}</button>`).join('')}</div>
     <label class="chk"><input type="checkbox" id="allPg"> Aplicar a todas as páginas deste caderno</label>
@@ -906,7 +1045,7 @@ async function chooseBg() {
       b.onclick = () => close({ bg: b.dataset.bg, all: m.querySelector('#allPg').checked });
     }));
   if (!r) return;
-  (r.all ? S.pages : [page()]).forEach(p => { p.bg = r.bg; markDirty(p.id); });
+  (r.all ? S.pages.filter(p => p.bg !== 'pdf') : [page()]).forEach(p => { p.bg = r.bg; markDirty(p.id); });
   if (r.all) S.nb.bg = r.bg;
   redrawBase();
 }
@@ -921,6 +1060,7 @@ async function showPages() {
       btns.forEach(b => b.onclick = () => { close(); goPage(+b.dataset.i); });
       for (let k = 0; k < btns.length; k++) {
         if (!btns[k].isConnected) return;
+        if (S.pages[k].pdf) await assetLoad(S.pages[k].pdf.asset);
         renderPageTo(btns[k].querySelector('canvas'), S.pages[k]);
         if (k % 4 === 3) await new Promise(requestAnimationFrame);
       }
@@ -939,7 +1079,8 @@ async function shareBlob(blob, name) {
   a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
-function exportPng() {
+async function exportPng() {
+  if (page().pdf) await assetLoad(page().pdf.asset);
   pageCanvas(page(), 2).toBlob(b => shareBlob(b, `${safeName(S.nb.title)}-pag${S.idx + 1}.png`), 'image/png');
 }
 async function exportPdf(list) {
@@ -949,7 +1090,10 @@ async function exportPdf(list) {
   const box = $('#print'); box.innerHTML = '';
   for (const p of list) {
     if (p.kind === 'doc') box.appendChild(docPrintNode(p));
-    else { const img = new Image(); img.src = pageCanvas(p, 1.6).toDataURL('image/jpeg', 0.92); box.appendChild(img); }
+    else {
+      if (p.pdf) await assetLoad(p.pdf.asset);
+      const img = new Image(); img.src = pageCanvas(p, 1.6).toDataURL('image/jpeg', 0.92); box.appendChild(img);
+    }
     await new Promise(r => setTimeout(r));
   }
   await Promise.all([...box.querySelectorAll('img')].map(i => i.decode ? i.decode().catch(() => {}) : null));
@@ -963,6 +1107,7 @@ async function moreMenu() {
   items.push(doc ? { label: 'Exportar esta página (PDF)', value: 'pdf1' } : { label: 'Exportar esta página (imagem)', value: 'png' });
   items.push({ label: 'Exportar o caderno (PDF)', value: 'pdf' });
   if (!doc) items.push({ label: 'Mudar o nome desta página', value: 'renp' });
+  items.push({ label: '📄 Inserir um PDF a seguir a esta página', value: 'ipdf' });
   items.push({ label: 'Mudar o nome do caderno', value: 'ren' });
   items.push({ label: 'Apagar esta página', value: 'del', danger: true });
   const v = await actionSheet('Mais opções', items);
@@ -972,6 +1117,7 @@ async function moreMenu() {
   else if (v === 'renp') { const t = await askText('Nome da página', page().title || ''); if (t) { page().title = t; markDirty(); renderTree(); } }
   else if (v === 'ren') { const t = await askText('Nome do caderno', S.nb.title); if (t) { S.nb.title = t; $('#nbTitle').textContent = t; markDirty(null); } }
   else if (v === 'del') deletePage();
+  else if (v === 'ipdf') { pdfHere = true; $('#filePdf').click(); }
 }
 
 /* ---------- Biblioteca ---------- */
@@ -1006,7 +1152,7 @@ async function nbMenu(nb) {
   if (v === 'col') { const c = await pickColor('Cor da capa', nb.color); if (c) { nb.color = c; await DB.put('notebooks', nb); } }
   if (v === 'del') {
     if (!await confirmBox('Apagar caderno', `Apagar «${nb.title}» e todas as suas páginas? Esta ação não pode ser anulada.`)) return;
-    for (const pid of nb.pages || []) await DB.del('pages', pid);
+    for (const pid of nb.pages || []) { const p = await DB.get('pages', pid); await DB.del('pages', pid); await delAssets([p]); }
     await DB.del('notebooks', nb.id);
     toast('Caderno apagado');
   }
@@ -1873,6 +2019,9 @@ function closeSide() { $('#side').classList.add('hidden'); $('#sideOv').classLis
 
 /* ---------- Ligações dos botões ---------- */
 $('#btnNew').onclick = newNotebook;
+let pdfHere = false;
+$('#btnPdf').onclick = () => { pdfHere = false; $('#filePdf').click(); };
+$('#filePdf').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importPdf(f, pdfHere && !!S.nb); };
 $('#btnBackup').onclick = backup;
 $('#btnDrive').onclick = driveMenu;
 $('#btnRestore').onclick = () => $('#fileRestore').click();

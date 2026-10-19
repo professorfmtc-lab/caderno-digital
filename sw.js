@@ -1,9 +1,16 @@
 /* Caderno Digital — service worker: guarda a app para funcionar sem internet */
-const CACHE = 'caderno-digital-v3';
+const CACHE = 'caderno-digital-v4';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+// Leitor de PDF (fase 3): guardado também, para abrir PDFs sem internet
+const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const PDFJS_FILES = [PDFJS + 'pdf.min.js', PDFJS + 'pdf.worker.min.js'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+  e.waitUntil(caches.open(CACHE).then(async c => {
+    await c.addAll(ASSETS);
+    // o leitor de PDF é opcional: se falhar agora, é guardado na primeira vez que for usado
+    await Promise.all(PDFJS_FILES.map(u => c.add(new Request(u, { mode: 'cors' })).catch(() => {})));
+  }));
   self.skipWaiting();
 });
 self.addEventListener('activate', e => {
@@ -14,7 +21,13 @@ self.addEventListener('activate', e => {
 const put = (req, res) => { if (res && res.ok) { const cp = res.clone(); caches.open(CACHE).then(c => c.put(req, cp)); } return res; };
 self.addEventListener('fetch', e => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  if (req.method !== 'GET') return;
+  // Leitor de PDF: usa a cópia guardada; se não houver, vai à rede e guarda
+  if (req.url.startsWith(PDFJS)) {
+    e.respondWith(caches.match(req.url).then(hit => hit || fetch(req).then(r => put(req.url, r))));
+    return;
+  }
+  if (new URL(req.url).origin !== location.origin) return;
   if (req.mode === 'navigate') {
     // A página principal: tenta a versão mais recente (até 3 s); sem rede, usa a guardada
     e.respondWith(new Promise(resolve => {
