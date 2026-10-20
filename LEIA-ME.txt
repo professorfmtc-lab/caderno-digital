@@ -1,4 +1,4 @@
-CADERNO DIGITAL — fases 1, 2 e 3
+CADERNO DIGITAL — fases 1, 2 e 3 (versão em módulos)
 Powered by Claude IA & Ideias&Soltas — concepção de produtos multimédia
 
 COMO INSTALAR / ATUALIZAR NO iPad
@@ -9,6 +9,19 @@ COMO INSTALAR / ATUALIZAR NO iPad
    Se já estava instalada: abre a app com internet e ela atualiza-se sozinha
    (se não mudar logo, fecha-a e volta a abrir).
    Os cadernos que já tinhas mantêm-se.
+
+ORGANIZAÇÃO DOS FICHEIROS
+  index.html      a página (só a estrutura)
+  estilos.css     o aspeto
+  js/base.js      constantes, armazenamento no iPad, estado, janelas
+  js/tinta.js     páginas manuscritas: papel, traços, zoom, laço, lápis
+  js/pdf.js       abrir PDFs e usá-los como fundo
+  js/editor.js    editor, exportar, biblioteca, cópia de segurança
+  js/drive.js     ligação ao Google Drive
+  js/blocos.js    páginas de blocos (à maneira do Notion)
+  js/arranque.js  botões e arranque
+  sw.js           guarda tudo para funcionar sem internet
+  Ao atualizar, copia a pasta inteira (incluindo a pasta js).
 
 PDFs (fase 3)
 - Biblioteca → "📄 Abrir PDF": cria um caderno novo com as páginas do PDF.
